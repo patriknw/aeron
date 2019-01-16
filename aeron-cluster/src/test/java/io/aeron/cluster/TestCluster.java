@@ -17,15 +17,20 @@ package io.aeron.cluster;
 
 import io.aeron.CommonContext;
 import io.aeron.Counter;
+import io.aeron.ExclusivePublication;
 import io.aeron.archive.ArchiveThreadingMode;
+import io.aeron.archive.client.AeronArchive;
 import io.aeron.cluster.client.AeronCluster;
 import io.aeron.cluster.client.EgressListener;
+import io.aeron.cluster.codecs.EventCode;
 import io.aeron.cluster.service.Cluster;
 import io.aeron.driver.MediaDriver;
 import io.aeron.driver.MinMulticastFlowControlSupplier;
 import io.aeron.driver.ThreadingMode;
+import io.aeron.logbuffer.Header;
 import org.agrona.BitUtil;
 import org.agrona.CloseHelper;
+import org.agrona.DirectBuffer;
 import org.agrona.ExpandableArrayBuffer;
 import org.agrona.collections.MutableInteger;
 import org.agrona.concurrent.status.AtomicCounter;
@@ -50,8 +55,31 @@ public class TestCluster implements AutoCloseable
 
     private final ExpandableArrayBuffer msgBuffer = new ExpandableArrayBuffer();
     private final MutableInteger responseCount = new MutableInteger();
-    private final EgressListener egressMessageListener =
-        (clusterSessionId, timestamp, buffer, offset, length, header) -> responseCount.value++;
+    private final EgressListener egressMessageListener = new EgressListener() {
+        @Override
+        public void onMessage(long clusterSessionId, long timestampMs, DirectBuffer buffer, int offset, int length, Header header) {
+            int value = buffer.getInt(offset);
+          System.out.println("egressMessageListener received value " + value);
+          responseCount.value++;
+        }
+
+        @Override
+        public void newLeader(long clusterSessionId, long leadershipTermId, int leaderMemberId, String memberEndpoints) {
+            System.out.println("egressMessageListener newLeader " + leaderMemberId);
+        }
+
+        @Override
+        public void sessionEvent(long correlationId, long clusterSessionId, long leadershipTermId, int leaderMemberId, EventCode code, String detail) {
+            System.out.println("egressMessageListener sessionEvent " + code + " " + detail);
+        }
+    };
+
+//    private final EgressListener egressMessageListener =
+//        (clusterSessionId, timestamp, buffer, offset, length, header) -> {
+//          int value = buffer.getInt(offset);
+//          System.out.println("egressMessageListener received value " + value);
+//          responseCount.value++;
+//        };
 
     private final TestNode[] nodes;
     private final String staticClusterMembers;
@@ -139,6 +167,8 @@ public class TestCluster implements AutoCloseable
         final String aeronDirName = CommonContext.getAeronDirectoryName() + "-" + index + "-driver";
         final TestNode.TestNodeContext testNodeContext = new TestNode.TestNodeContext();
 
+        System.out.println("aeron base dir: " + baseDirName);
+
         testNodeContext.aeronArchiveContext
             .controlRequestChannel(memberSpecificPort(ARCHIVE_CONTROL_REQUEST_CHANNEL, index))
             .controlRequestStreamId(100)
@@ -164,6 +194,9 @@ public class TestCluster implements AutoCloseable
             .localControlStreamId(testNodeContext.aeronArchiveContext.controlRequestStreamId())
             .threadingMode(ArchiveThreadingMode.SHARED)
             .deleteArchiveOnStart(cleanStart);
+
+        System.out.println("aeronArchiveContext.controlRequestChannel " + testNodeContext.aeronArchiveContext.controlRequestChannel() + " #" + testNodeContext.aeronArchiveContext.controlRequestStreamId());
+
 
         testNodeContext.service = new TestNode.TestService(index);
 
@@ -197,6 +230,8 @@ public class TestCluster implements AutoCloseable
         final String aeronDirName = CommonContext.getAeronDirectoryName() + "-" + index + "-driver";
         final TestNode.TestNodeContext testNodeContext = new TestNode.TestNodeContext();
 
+        System.out.println("aeron base dir: " + baseDirName);
+
         testNodeContext.aeronArchiveContext
             .controlRequestChannel(memberSpecificPort(ARCHIVE_CONTROL_REQUEST_CHANNEL, index))
             .controlRequestStreamId(100)
@@ -225,6 +260,7 @@ public class TestCluster implements AutoCloseable
 
         testNodeContext.service = new TestNode.TestService(index);
 
+        System.out.println("init");
         testNodeContext.consensusModuleContext
             .errorHandler(Throwable::printStackTrace)
             .clusterMemberId(NULL_VALUE)
@@ -286,9 +322,13 @@ public class TestCluster implements AutoCloseable
         return msgBuffer;
     }
 
-    void startClient()
+    void startClient() {
+        startClient(0);
+    }
+
+    void startClient(int index)
     {
-        final String aeronDirName = CommonContext.getAeronDirectoryName();
+        final String aeronDirName = CommonContext.getAeronDirectoryName() + "-" + index;;
 
         clientMediaDriver = MediaDriver.launch(
             new MediaDriver.Context()
@@ -305,9 +345,14 @@ public class TestCluster implements AutoCloseable
 
     void sendMessages(final int messageCount)
     {
+        sendMessages(messageCount, 0);
+    }
+
+    void sendMessages(final int messageCount, int value)
+    {
         for (int i = 0; i < messageCount; i++)
         {
-            msgBuffer.putInt(0, i);
+            msgBuffer.putInt(0, value + i);
             while (client.offer(msgBuffer, 0, BitUtil.SIZE_OF_INT) < 0)
             {
                 TestUtil.checkInterruptedStatus();

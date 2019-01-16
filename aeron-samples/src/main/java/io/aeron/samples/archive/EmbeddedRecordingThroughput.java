@@ -52,13 +52,18 @@ public class EmbeddedRecordingThroughput implements AutoCloseable
     private final AeronArchive aeronArchive;
     private final UnsafeBuffer buffer = new UnsafeBuffer(allocateDirectAligned(MESSAGE_LENGTH, CACHE_LINE_LENGTH));
 
-    public static void main(final String[] args)
+    public static void main(final String[] args) throws Exception
     {
         loadPropertiesFiles(args);
 
         try (EmbeddedRecordingThroughput test = new EmbeddedRecordingThroughput())
         {
             test.startRecording();
+
+            for (int i = 0; i < 10; i++) {
+                test.streamMessagesForRecording();
+                Thread.sleep(1000);
+            }
 
             final ContinueBarrier barrier = new ContinueBarrier("Execute again?");
             do

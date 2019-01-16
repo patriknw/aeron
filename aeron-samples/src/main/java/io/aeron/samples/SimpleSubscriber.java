@@ -64,7 +64,7 @@ public class SimpleSubscriber
                     header.termId(), header.termOffset(), length, offset));
 
                 // Received the intended message, time to exit the program
-                running.set(false);
+//                running.set(false);
             };
 
         // Create a context, needed for client connection to media driver

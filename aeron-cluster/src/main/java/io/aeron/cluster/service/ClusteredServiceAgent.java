@@ -446,6 +446,8 @@ class ClusteredServiceAgent implements Agent, Cluster
         {
             awaitActiveLog();
 
+            System.out.println("checkForReplay " + activeLogEvent.channel + " #" + activeLogEvent.streamId);
+
             try (Subscription subscription = aeron.addSubscription(activeLogEvent.channel, activeLogEvent.streamId))
             {
                 consensusModuleProxy.ack(activeLogEvent.logPosition, ackId++, serviceId);
@@ -515,6 +517,8 @@ class ClusteredServiceAgent implements Agent, Cluster
     private void joinActiveLog()
     {
         final Subscription logSubscription = aeron.addSubscription(activeLogEvent.channel, activeLogEvent.streamId);
+        System.out.println("joinActiveLog " + activeLogEvent.channel + " #" + activeLogEvent.streamId);
+
         consensusModuleProxy.ack(activeLogEvent.logPosition, ackId++, serviceId);
 
         final Image image = awaitImage(activeLogEvent.sessionId, logSubscription);
